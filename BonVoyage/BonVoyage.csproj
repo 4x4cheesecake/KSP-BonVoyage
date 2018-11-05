@@ -34,42 +34,51 @@
     </CustomCommands>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Assembly-CSharp">
-      <HintPath>..\..\..\..\Kerbal Space Program 1.4.1\KSP_Data\Managed\Assembly-CSharp.dll</HintPath>
+    <Reference Include="Assembly-CSharp, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\Kerbal Space Program 1.5.1\KSP_x64_Data\Managed\Assembly-CSharp.dll</HintPath>
     </Reference>
     <Reference Include="System" />
-    <Reference Include="UnityEngine">
-      <HintPath>..\..\..\..\Kerbal Space Program 1.4.1\KSP_Data\Managed\UnityEngine.dll</HintPath>
+    <Reference Include="UnityEngine, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\Kerbal Space Program 1.5.1\KSP_x64_Data\Managed\UnityEngine.dll</HintPath>
     </Reference>
-    <Reference Include="UnityEngine.UI">
-      <HintPath>..\..\..\..\Kerbal Space Program 1.4.1\KSP_Data\Managed\UnityEngine.UI.dll</HintPath>
+    <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\Kerbal Space Program 1.5.1\KSP_x64_Data\Managed\UnityEngine.UI.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BonVoyage.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="BonVoyageModule.cs" />
-    <Compile Include="ActiveRover.cs" />
+    <Compile Include="BVController.cs" />
+    <Compile Include="GUI\CommonWindowProperties.cs" />
+    <Compile Include="GUI\ControlWindowModel.cs" />
+    <Compile Include="GUI\ControlWindowView.cs" />
+    <Compile Include="GUI\MainWindowModel.cs" />
+    <Compile Include="GUI\MainWindowView.cs" />
+    <Compile Include="GUI\SettingsWindowModel.cs" />
+    <Compile Include="GUI\SettingsWindowView.cs" />
+    <Compile Include="GUI\StyleConverter.cs" />
+    <Compile Include="GUI\TooltipExtension.cs" />
     <Compile Include="PathFinder\Hex.cs" />
     <Compile Include="PathFinder\Path.cs" />
     <Compile Include="PathFinder\PathFinder.cs" />
-    <Compile Include="Utilities\AssemblyUtils.cs" />
-    <Compile Include="Utilities\GeoUtils.cs" />
-    <Compile Include="Utilities\ToolbarWrapper.cs" />
-    <Compile Include="Utilities\GLUtils.cs" />
     <Compile Include="PathFinder\PathUtils.cs" />
-    <Compile Include="UIFramework\Core.cs" />
-    <Compile Include="UIFramework\Layout.cs" />
-    <Compile Include="UIFramework\Offsets.cs" />
-    <Compile Include="UIFramework\Palette.cs" />
-    <Compile Include="UIFramework\Styles.cs" />
-    <Compile Include="Utilities\LZString.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RoverController.cs" />
+    <Compile Include="ShipController.cs" />
+    <Compile Include="Tools\Configuration.cs" />
+    <Compile Include="Tools\GeoUtils.cs" />
+    <Compile Include="Tools\StabilizeVessel.cs" />
+    <Compile Include="Tools\ToolbarWrapper.cs" />
+    <Compile Include="Tools\Tools.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup>
     <Content Include="Issues.txt" />
   </ItemGroup>
   <PropertyGroup>
-    <PostBuildEvent>copy /Y "$(TargetDir)$(TargetName).dll" "$(SolutionDir)GameData\BonVoyage\$(TargetName).dll"</PostBuildEvent>
+    <PostBuildEvent>copy /Y "$(TargetDir)$(TargetName).dll" "$(SolutionDir)GameData\BonVoyage\plugins\$(TargetName).dll"</PostBuildEvent>
   </PropertyGroup>
 </Project>
