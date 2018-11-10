@@ -469,9 +469,9 @@ namespace BonVoyage
         /// <returns></returns>
         private double GetAvailablePower_Solar()
         {
-            //// Revision - Kopernicus
+            // Kopernicus sets the right values for PhysicsGlobals.SolarLuminosity and PhysicsGlobals.SolarLuminosityAtHome so we can use them in all cases
             double solarPower = 0;
-            double distanceToSun = vessel.distanceToSun;
+            double distanceToSun = Vector3d.Distance(vessel.GetWorldPos3D(), FlightGlobals.Bodies[mainStarIndex].position);
             double solarFlux = PhysicsGlobals.SolarLuminosity / (4 * Math.PI * distanceToSun * distanceToSun); // f = L / SA = L / 4π r2 (Wm-2)
             float multiplier = 1;
 
@@ -485,7 +485,7 @@ namespace BonVoyage
                 {
                     if (solarPanel.useCurve) // Power curve
                         multiplier = solarPanel.powerCurve.Evaluate((float)distanceToSun);
-                    else // solar flux at current distance / solar flux at 1AU (Kerbin)
+                    else // solar flux at current distance / solar flux at 1AU (Kerbin in stock, other value in Kopernicus)
                         multiplier = (float)(solarFlux / PhysicsGlobals.SolarLuminosityAtHome);
                     solarPower += solarPanel.chargeRate * multiplier;
                 }
@@ -523,8 +523,7 @@ namespace BonVoyage
                         }
                     }
                 }
-
-                //// Revision - NF, Interstellar
+                
                 // Other generators
                 PartModuleList modules = part.Modules;
                 for (int j = 0; j < modules.Count; ++j)
@@ -536,10 +535,25 @@ namespace BonVoyage
                         otherPower += double.Parse(module.Fields.GetValue("CurrentGeneration").ToString());
 
                     // KSP Interstellar generators
-                    if (module.moduleName == "FNGenerator")
+                    if ((module.moduleName == "ThermalElectricEffectGenerator") || (module.moduleName == "IntegratedThermalElectricPowerGenerator") || (module.moduleName == "ThermalElectricPowerGenerator") 
+                        || (module.moduleName == "IntegratedChargedParticlesPowerGenerator") || (module.moduleName == "ChargedParticlesPowerGenerator") || (module.moduleName == "FNGenerator"))
                     {
                         if (bool.Parse(module.Fields.GetValue("IsEnabled").ToString()))
-                            otherPower += double.Parse(module.Fields.GetValue("maxElectricdtps").ToString());
+                        {
+                            //otherPower += double.Parse(module.Fields.GetValue("maxElectricdtps").ToString()); // Doesn't work as expected
+
+                            string maxPowerStr = module.Fields.GetValue("MaxPowerStr").ToString();
+                            double maxPower = 0;
+
+                            if (maxPowerStr.Contains("GW"))
+                                maxPower = double.Parse(maxPowerStr.Replace(" GW", "")) * 1000000;
+                            else if (maxPowerStr.Contains("MW"))
+                                maxPower = double.Parse(maxPowerStr.Replace(" MW", "")) * 1000;
+                            else
+                                maxPower = double.Parse(maxPowerStr.Replace(" KW", ""));
+
+                            otherPower += maxPower;
+                        }
                     }
                 }
                 
@@ -668,7 +682,7 @@ namespace BonVoyage
             //// Revision - Kopernicus
             Vector3d roverPos = vessel.mainBody.position - vessel.GetWorldPos3D();
             Vector3d toMainStar = vessel.mainBody.position - FlightGlobals.Bodies[mainStarIndex].position;
-            angle = Vector3d.Angle(roverPos, toMainStar); // Angle between rover and main star
+            angle = Vector3d.Angle(roverPos, toMainStar); // Angle between rover and the main star
 
             // Speed penalties at twighlight and at night
             if ((angle > 90) && manned) // night

@@ -70,6 +70,7 @@
     <Compile Include="ShipController.cs" />
     <Compile Include="Tools\Configuration.cs" />
     <Compile Include="Tools\GeoUtils.cs" />
+    <Compile Include="Tools\KopernicusWrapper.cs" />
     <Compile Include="Tools\StabilizeVessel.cs" />
     <Compile Include="Tools\ToolbarWrapper.cs" />
     <Compile Include="Tools\Tools.cs" />

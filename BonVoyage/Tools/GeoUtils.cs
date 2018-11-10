@@ -213,7 +213,7 @@ namespace BonVoyage
 
         /// <summary>
         /// Get altitude at point.
-        /// (Waypoint manager)
+        /// Approximation, because the PQS controller gives the theoretical ideal smooth surface curve terrain
         /// </summary>
         /// <param name="latitude">Latitude</param>
         /// <param name="longitude">Longitude</param>
@@ -221,7 +221,7 @@ namespace BonVoyage
         /// <returns>Altitude</returns>
         internal static double TerrainHeightAt(double latitude, double longitude, CelestialBody body)
         {
-            // Not sure when this happens - for Sun and Jool?
+            // Stars and gas giants don't have a surface
             if (body.pqsController == null)
                 return 0;
 

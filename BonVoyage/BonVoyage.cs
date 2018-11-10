@@ -656,7 +656,8 @@ namespace BonVoyage
         /// </summary>
         public void FixedUpdate()
         {
-            StabilizeVessel.Stabilize();
+            if (!otherStabilizerPresent)
+                StabilizeVessel.Stabilize();
         }
 
 
