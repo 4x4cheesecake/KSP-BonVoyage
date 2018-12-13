@@ -26,6 +26,9 @@ namespace BonVoyage
         internal string Label;
         internal string Text;
         internal string Tooltip;
+        internal bool Toggle; // true - DialogGUIToggle ; false - DialogGUILabel
+        internal Func<bool> GetToggleValue;
+        internal Callback<bool> ToggleSelectedCallback;
     }
 
 
@@ -52,6 +55,7 @@ namespace BonVoyage
         }
 
         internal bool Active {  get { return active; } }
+
         internal bool Arrived
         {
             get { return arrived; }
@@ -64,9 +68,18 @@ namespace BonVoyage
             }
         }
 
+        internal Vector3d RotationVector
+        {
+            get { return rotationVector; }
+            set { rotationVector = value; }
+        }
+
         internal double RemainingDistanceToTarget { get { return distanceToTarget - distanceTravelled; } }
         internal virtual double AverageSpeed { get { return 0; } }
         internal event EventHandler OnStateChanged;
+
+        internal Batteries batteries = new Batteries(); // Information about batteries
+        internal Converter fuelCells = new Converter(); // Information about fuel cells
 
         #endregion
 
@@ -86,8 +99,9 @@ namespace BonVoyage
         protected double distanceToTarget = 0;
         protected double distanceTravelled = 0;
         protected double lastTimeUpdated = 0;
+        private Vector3d rotationVector = Vector3d.back; // Rotation of a craft
         // Config values
-        
+
         internal List<PathUtils.WayPoint> path = null; // Path to destination
 
         private VesselState _state;
@@ -131,6 +145,36 @@ namespace BonVoyage
                 distanceTravelled = double.Parse(BVModule.GetValue("distanceTravelled") != null ? BVModule.GetValue("distanceTravelled") : "0");
                 if (BVModule.GetValue("pathEncoded") != null)
                     path = PathUtils.DecodePath(BVModule.GetValue("pathEncoded"));
+
+                if (BVModule.GetValue("rotationVector") != null)
+                {
+                    switch (BVModule.GetValue("rotationVector"))
+                    {
+                        case "0":
+                            rotationVector = Vector3d.up;
+                            break;
+                        case "1":
+                            rotationVector = Vector3d.down;
+                            break;
+                        case "2":
+                            rotationVector = Vector3d.forward;
+                            break;
+                        case "3":
+                            rotationVector = Vector3d.back;
+                            break;
+                        case "4":
+                            rotationVector = Vector3d.right;
+                            break;
+                        case "5":
+                            rotationVector = Vector3d.left;
+                            break;
+                        default:
+                            rotationVector = Vector3d.back;
+                            break;
+                    }
+                }
+                else
+                    rotationVector = Vector3d.back;
             }
 
             State = VesselState.Idle;
@@ -203,6 +247,7 @@ namespace BonVoyage
 
             DisplayedSystemCheckResult result = new DisplayedSystemCheckResult
             {
+                Toggle = false,
                 Label = Localizer.Format("#LOC_BV_Control_TargetLat"),
                 Text = targetLatitude.ToString("0.####"),
                 Tooltip = ""
@@ -211,6 +256,7 @@ namespace BonVoyage
 
             result = new DisplayedSystemCheckResult
             {
+                Toggle = false,
                 Label = Localizer.Format("#LOC_BV_Control_TargetLon"),
                 Text = targetLongitude.ToString("0.####"),
                 Tooltip = ""
@@ -219,6 +265,7 @@ namespace BonVoyage
 
             result = new DisplayedSystemCheckResult
             {
+                Toggle = false,
                 Label = Localizer.Format("#LOC_BV_Control_Distance"),
                 Text = Tools.ConvertDistanceToText(RemainingDistanceToTarget),
                 Tooltip = ""
@@ -387,6 +434,53 @@ namespace BonVoyage
             vessel.protoVessel.altitude = vessel.altitude;
             vessel.protoVessel.landedAt = vessel.mainBody.bodyName;
             vessel.protoVessel.displaylandedAt = vessel.mainBody.bodyDisplayName.Replace("^N", "");
+        }
+
+
+        /// <summary>
+        /// Check if unmanned vessel has connection
+        /// </summary>
+        /// <returns></returns>
+        internal bool CheckConnection()
+        {
+            if (vessel.GetCrewCount() == 0) // Unmanned -> check connection
+            {
+                // CommNet
+                if (vessel.Connection.ControlState != CommNet.VesselControlState.ProbeFull)
+                {
+                    ScreenMessages.PostScreenMessage(Localizer.Format("#LOC_BV_Warning_NoConnection", 5f)).color = Color.red;
+                    return false;
+                }
+
+                // RemoteTech
+                if (Tools.AssemblyIsLoaded("RemoteTech"))
+                {
+                    if (RemoteTechWrapper.IsRemoteTechEnabled() && !RemoteTechWrapper.HasAnyConnection(vessel.id) && !RemoteTechWrapper.HasLocalControl(vessel.id))
+                    {
+                        ScreenMessages.PostScreenMessage(Localizer.Format("#LOC_BV_Warning_NoConnection", 5f)).color = Color.red;
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+
+        /// <summary>
+        /// Deduct used amount from resource tanks
+        /// </summary>
+        internal void ProcessResources()
+        {
+            IResourceBroker broker = new ResourceBroker();
+            if (fuelCells.Use)
+            {
+                var iList = fuelCells.InputResources;
+                for (int i = 0; i < iList.Count; i++)
+                {
+                    iList[i].MaximumAmountAvailable -= broker.RequestResource(vessel.rootPart, iList[i].Name, iList[i].CurrentAmountUsed, 1, ResourceFlowMode.ALL_VESSEL);
+                    iList[i].CurrentAmountUsed = 0;
+                }
+            }
         }
 
     }

@@ -32,9 +32,17 @@ namespace BonVoyage
         /// Vessel type - 0 - rover, 1 - ship
         /// </summary>
         // localize, when ship part is ready
-        [KSPField(isPersistant = true, guiActive = false, guiActiveEditor = false, guiName = "Vessel type")]
+        [KSPField(isPersistant = true, guiActive = false, guiActiveEditor = false, guiName = "Vessel type", category = "Bon Voyage")]
         [UI_ChooseOption(scene = UI_Scene.None, options = new[] { "0", "1" }, display = new[] { "Rover", "Ship" })]
         public string vesselType = "0";
+
+        /// <summary>
+        /// Rotation vector
+        /// </summary>
+        [KSPField(isPersistant = true, guiActive = true, guiActiveEditor = false, guiName = "#LOC_BV_ContextMenu_RV", advancedTweakable = true, category = "Bon Voyage")]
+        [UI_ChooseOption(scene = UI_Scene.Flight, options = new[] { "0", "1", "2", "3", "4", "5" }, display = new[] { "#LOC_BV_ContextMenu_RV_Up", "#LOC_BV_ContextMenu_RV_Down", "#LOC_BV_ContextMenu_RV_Forward",
+            "#LOC_BV_ContextMenu_RV_Back", "#LOC_BV_ContextMenu_RV_Right", "#LOC_BV_ContextMenu_RV_Left" })]
+        public string rotationVector = "3";
 
         /// <summary>
         /// Target latitude
@@ -123,8 +131,9 @@ namespace BonVoyage
             if (HighLogic.LoadedSceneIsFlight)
             {
                 //Fields["vesselType"].guiActive = !shutdown;
+                Fields["rotationVector"].uiControlFlight.onFieldChanged = RotationVectorChanged;
+                Fields["rotationVector"].guiActive = !shutdown;
                 Events["BVControlPanel"].guiActive = !shutdown;
-                Events["BVControlPanel"].guiName = Localizer.Format("#LOC_BV_ContextMenu_Panel");
             }
         }
 
@@ -134,7 +143,7 @@ namespace BonVoyage
         /// <summary>
         /// Shutdown/Activate BV controller
         /// </summary>
-        [KSPEvent(guiActive = true, guiActiveEditor = true, guiName = "Shutdown Bon Voyage Controller", category = "Bon Voyage")]
+        [KSPEvent(guiActive = true, guiActiveEditor = true, guiName = "Shutdown Bon Voyage Controller", category = "Bon Voyage", requireFullControl = true)]
         public void ToggleBVController()
         {
             shutdown = !shutdown;
@@ -142,6 +151,7 @@ namespace BonVoyage
             if (!HighLogic.LoadedSceneIsEditor)
             {
                 //Fields["vesselType"].guiActive = !shutdown;
+                Fields["rotationVector"].guiActive = !shutdown;
                 Events["BVControlPanel"].guiActive = !shutdown;
                 if (shutdown)
                 {
@@ -164,10 +174,48 @@ namespace BonVoyage
         /// <summary>
         /// Show BV control panel
         /// </summary>
-        [KSPEvent(guiActive = true, guiName = "Bon Voyage Control Panel", category = "Bon Voyage")]
+        [KSPEvent(guiActive = true, guiName = "#LOC_BV_ContextMenu_Panel", category = "Bon Voyage", requireFullControl = true)]
         public void BVControlPanel()
         {
             BonVoyage.Instance.ToggleControlWindow();
+        }
+
+
+        /// <summary>
+        /// Raised when rotationVector field was changed
+        /// </summary>
+        /// <param name="field"></param>
+        /// <param name="oldValue"></param>
+        private void RotationVectorChanged(BaseField field, object oldValue)
+        {
+            BVController controller = BonVoyage.Instance.GetControllerOfVessel(vessel);
+            if (controller != null)
+            {
+                switch (rotationVector)
+                {
+                    case "0":
+                        controller.RotationVector = Vector3d.up;
+                        break;
+                    case "1":
+                        controller.RotationVector = Vector3d.down;
+                        break;
+                    case "2":
+                        controller.RotationVector = Vector3d.forward;
+                        break;
+                    case "3":
+                        controller.RotationVector = Vector3d.back;
+                        break;
+                    case "4":
+                        controller.RotationVector = Vector3d.right;
+                        break;
+                    case "5":
+                        controller.RotationVector = Vector3d.left;
+                        break;
+                    default:
+                        controller.RotationVector = Vector3d.back;
+                        break;
+                }
+            }
         }
 
         #endregion

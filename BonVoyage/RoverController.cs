@@ -13,7 +13,7 @@ namespace BonVoyage
     {
         #region internal properties
 
-        internal override double AverageSpeed { get { return ((angle <= 90) ? (averageSpeed * speedMultiplier) : (averageSpeedAtNight * speedMultiplier)); } }
+        internal override double AverageSpeed { get { return ((angle <= 90) || (batteries.UseBatteries && (batteries.CurrentEC > 0)) ? (averageSpeed * speedMultiplier) : (averageSpeedAtNight * speedMultiplier)); } }
 
         #endregion
 
@@ -35,7 +35,7 @@ namespace BonVoyage
         private double maxSpeedBase; // maximum speed without modifiers
         private int wheelsPercentualModifier; // Speed modifier based on wheels
         private int crewSpeedBonus; // Speed modifier based on the available crew
-        WheelTestResult wheelTestResult = new WheelTestResult();
+        WheelTestResult wheelTestResult = new WheelTestResult(); // Result of a test of wheels
 
         // Reduction of speed based on difference between required and available power in percents
         private double SpeedReduction
@@ -59,11 +59,14 @@ namespace BonVoyage
         /// <param name="module"></param>
         internal RoverController(Vessel v, ConfigNode module) : base (v, module)
         {
-            // Load values from config
-            averageSpeed = double.Parse(BVModule.GetValue("averageSpeed") != null ? BVModule.GetValue("averageSpeed") : "0");
-            averageSpeedAtNight = double.Parse(BVModule.GetValue("averageSpeedAtNight") != null ? BVModule.GetValue("averageSpeedAtNight") : "0");
-            manned = bool.Parse(BVModule.GetValue("manned") != null ? BVModule.GetValue("manned") : "false");
-            vesselHeightFromTerrain = double.Parse(BVModule.GetValue("vesselHeightFromTerrain") != null ? BVModule.GetValue("vesselHeightFromTerrain") : "0");
+            // Load values from config if it isn't the first run of the mod (we are reseting vessel on the first run)
+            if (!Configuration.FirstRun)
+            {
+                averageSpeed = double.Parse(BVModule.GetValue("averageSpeed") != null ? BVModule.GetValue("averageSpeed") : "0");
+                averageSpeedAtNight = double.Parse(BVModule.GetValue("averageSpeedAtNight") != null ? BVModule.GetValue("averageSpeedAtNight") : "0");
+                manned = bool.Parse(BVModule.GetValue("manned") != null ? BVModule.GetValue("manned") : "false");
+                vesselHeightFromTerrain = double.Parse(BVModule.GetValue("vesselHeightFromTerrain") != null ? BVModule.GetValue("vesselHeightFromTerrain") : "0");
+            }
 
             speedMultiplier = 1.0;
             angle = 0;
@@ -94,6 +97,7 @@ namespace BonVoyage
 
             DisplayedSystemCheckResult result = new DisplayedSystemCheckResult
             {
+                Toggle = false,
                 Label = Localizer.Format("#LOC_BV_Control_AverageSpeed"),
                 Text = averageSpeed.ToString("F") + " m/s",
                 Tooltip = 
@@ -111,14 +115,17 @@ namespace BonVoyage
 
             result = new DisplayedSystemCheckResult
             {
+                Toggle = false,
                 Label = Localizer.Format("#LOC_BV_Control_GeneratedPower"),
                 Text = (electricPower_Solar + electricPower_Other).ToString("F"),
-                Tooltip = Localizer.Format("#LOC_BV_Control_SolarPower") + ": " + electricPower_Solar.ToString("F") + "\n" + Localizer.Format("#LOC_BV_Control_GeneratorPower") + ": " + electricPower_Other.ToString("F")
+                Tooltip = Localizer.Format("#LOC_BV_Control_SolarPower") + ": " + electricPower_Solar.ToString("F") + "\n" + Localizer.Format("#LOC_BV_Control_GeneratorPower") + ": " + electricPower_Other.ToString("F") + "\n"
+                    + Localizer.Format("#LOC_BV_Control_UseBatteries_Usage") + ": " + (batteries.UseBatteries ? (batteries.MaxUsedEC.ToString("F0") + " / " + batteries.MaxAvailableEC.ToString("F0") + " EC") : Localizer.Format("#LOC_BV_Control_No"))
             };
             displayedSystemCheckResults.Add(result);
 
             result = new DisplayedSystemCheckResult
             {
+                Toggle = false,
                 Label = Localizer.Format("#LOC_BV_Control_RequiredPower"),
                 Text = requiredPower.ToString("F") 
                     + (SpeedReduction == 0 ? "" : 
@@ -126,6 +133,26 @@ namespace BonVoyage
                             ? " (" + Localizer.Format("#LOC_BV_Control_PowerReduced") + " " + SpeedReduction.ToString("F") + "%)" 
                             : " (" + Localizer.Format("#LOC_BV_Control_NotEnoughPower") + ")")),
                 Tooltip = ""
+            };
+            displayedSystemCheckResults.Add(result);
+
+            result = new DisplayedSystemCheckResult
+            {
+                Toggle = true,
+                Text = Localizer.Format("#LOC_BV_Control_UseBatteries"),
+                Tooltip = Localizer.Format("#LOC_BV_Control_UseBatteries_Tooltip"),
+                GetToggleValue = GetUseBatteries,
+                ToggleSelectedCallback = UseBatteriesChanged
+            };
+            displayedSystemCheckResults.Add(result);
+
+            result = new DisplayedSystemCheckResult
+            {
+                Toggle = true,
+                Text = Localizer.Format("#LOC_BV_Control_UseFuelCells"),
+                Tooltip = Localizer.Format("#LOC_BV_Control_UseFuelCellsTooltip"),
+                GetToggleValue = GetUseFuelCells,
+                ToggleSelectedCallback = UseFuelCellsChanged
             };
             displayedSystemCheckResults.Add(result);
 
@@ -177,6 +204,52 @@ namespace BonVoyage
             // Get power production
             electricPower_Solar = GetAvailablePower_Solar();
             electricPower_Other = GetAvailablePower_Other();
+
+            // Get available EC from batteries
+            if (batteries.UseBatteries)
+                batteries.MaxAvailableEC = GetAvailableEC_Batteries();
+            else
+                batteries.MaxAvailableEC = 0;
+
+            // Get available EC from fuell cells
+            fuelCells.OutputValue = 0;
+            fuelCells.InputResources.Clear();
+            if (fuelCells.Use)
+            {
+                List<ModuleResourceConverter> mrc = vessel.FindPartModulesImplementing<ModuleResourceConverter>();
+                for (int i = 0; i < mrc.Count; i++)
+                {
+                    bool found = false;
+                    try
+                    {
+                        var ec = mrc[i].outputList.Find(x => x.ResourceName == "ElectricCharge");
+                        fuelCells.OutputValue = ec.Ratio;
+                        found = true;
+                    }
+                    catch
+                    {
+                        found = false;
+                    }
+
+                    if (found)
+                    {
+                        // Add input resources
+                        var iList = mrc[i].inputList;
+                        for (int r = 0; r < iList.Count; r++)
+                        {
+                            var ir = fuelCells.InputResources.Find(x => x.Name == iList[r].ResourceName);
+                            if (ir == null)
+                            {
+                                ir = new Resource();
+                                ir.Name = iList[r].ResourceName;
+                                fuelCells.InputResources.Add(ir);
+                            }
+                            ir.Ratio += iList[r].Ratio;
+                        }
+                    }
+                }
+            }
+            electricPower_Other += fuelCells.OutputValue;
 
             // Manned
             manned = (vessel.GetCrewCount() > 0);
@@ -245,7 +318,7 @@ namespace BonVoyage
                     averageSpeed = averageSpeed * (1 - speedReduction);
             }
 
-            // If required power is greater then generated other power generated, then average speed at night can be lowered up to 75%
+            // If required power is greater then other power generated, then average speed at night can be lowered up to 75%
             if (requiredPower > electricPower_Other)
             {
                 double speedReduction = (requiredPower - electricPower_Other) / requiredPower;
@@ -253,6 +326,30 @@ namespace BonVoyage
                     averageSpeedAtNight = averageSpeedAtNight * (1 - speedReduction);
                 else
                     averageSpeedAtNight = 0;
+            }
+
+            // If we are using batteries, compute for how long and how much EC we can use
+            if (batteries.UseBatteries)
+            {
+                batteries.MaxUsedEC = 0;
+                batteries.ECPerSecondConsumed = 0;
+                batteries.ECPerSecondGenerated = 0;
+
+                // We have enough of solar power to recharge batteries
+                if (requiredPower < (electricPower_Solar + electricPower_Other))
+                {
+                    batteries.ECPerSecondConsumed = Math.Max(requiredPower - electricPower_Other, 0); // If there is more other power than required power, we don't need batteries
+                    batteries.MaxUsedEC = batteries.MaxAvailableEC / 2; // We are using only half of max available EC
+                    if (batteries.ECPerSecondConsumed > 0)
+                    {
+                        double halfday = vessel.mainBody.rotationPeriod / 2; // in seconds
+                        batteries.ECPerSecondGenerated = electricPower_Solar + electricPower_Other - requiredPower;
+                        batteries.MaxUsedEC = Math.Min(batteries.MaxUsedEC, batteries.ECPerSecondConsumed * halfday); // get lesser value of MaxUsedEC and EC consumed per night
+                        batteries.MaxUsedEC = Math.Min(batteries.MaxUsedEC, batteries.ECPerSecondGenerated * halfday); // get lesser value of MaxUsedEC and max EC available for recharge during a day
+                    }
+                }
+
+                batteries.CurrentEC = batteries.MaxUsedEC; // We are starting at full available capacity
             }
         }
 
@@ -469,9 +566,9 @@ namespace BonVoyage
         /// <returns></returns>
         private double GetAvailablePower_Solar()
         {
-            //// Revision - Kopernicus
+            // Kopernicus sets the right values for PhysicsGlobals.SolarLuminosity and PhysicsGlobals.SolarLuminosityAtHome so we can use them in all cases
             double solarPower = 0;
-            double distanceToSun = vessel.distanceToSun;
+            double distanceToSun = Vector3d.Distance(vessel.GetWorldPos3D(), FlightGlobals.Bodies[mainStarIndex].position);
             double solarFlux = PhysicsGlobals.SolarLuminosity / (4 * Math.PI * distanceToSun * distanceToSun); // f = L / SA = L / 4π r2 (Wm-2)
             float multiplier = 1;
 
@@ -485,7 +582,7 @@ namespace BonVoyage
                 {
                     if (solarPanel.useCurve) // Power curve
                         multiplier = solarPanel.powerCurve.Evaluate((float)distanceToSun);
-                    else // solar flux at current distance / solar flux at 1AU (Kerbin)
+                    else // solar flux at current distance / solar flux at 1AU (Kerbin in stock, other value in Kopernicus)
                         multiplier = (float)(solarFlux / PhysicsGlobals.SolarLuminosityAtHome);
                     solarPower += solarPanel.chargeRate * multiplier;
                 }
@@ -523,8 +620,7 @@ namespace BonVoyage
                         }
                     }
                 }
-
-                //// Revision - NF, Interstellar
+                
                 // Other generators
                 PartModuleList modules = part.Modules;
                 for (int j = 0; j < modules.Count; ++j)
@@ -536,10 +632,25 @@ namespace BonVoyage
                         otherPower += double.Parse(module.Fields.GetValue("CurrentGeneration").ToString());
 
                     // KSP Interstellar generators
-                    if (module.moduleName == "FNGenerator")
+                    if ((module.moduleName == "ThermalElectricEffectGenerator") || (module.moduleName == "IntegratedThermalElectricPowerGenerator") || (module.moduleName == "ThermalElectricPowerGenerator") 
+                        || (module.moduleName == "IntegratedChargedParticlesPowerGenerator") || (module.moduleName == "ChargedParticlesPowerGenerator") || (module.moduleName == "FNGenerator"))
                     {
                         if (bool.Parse(module.Fields.GetValue("IsEnabled").ToString()))
-                            otherPower += double.Parse(module.Fields.GetValue("maxElectricdtps").ToString());
+                        {
+                            //otherPower += double.Parse(module.Fields.GetValue("maxElectricdtps").ToString()); // Doesn't work as expected
+
+                            string maxPowerStr = module.Fields.GetValue("MaxPowerStr").ToString();
+                            double maxPower = 0;
+
+                            if (maxPowerStr.Contains("GW"))
+                                maxPower = double.Parse(maxPowerStr.Replace(" GW", "")) * 1000000;
+                            else if (maxPowerStr.Contains("MW"))
+                                maxPower = double.Parse(maxPowerStr.Replace(" MW", "")) * 1000;
+                            else
+                                maxPower = double.Parse(maxPowerStr.Replace(" KW", ""));
+
+                            otherPower += maxPower;
+                        }
                     }
                 }
                 
@@ -561,6 +672,25 @@ namespace BonVoyage
             }
 
             return otherPower;
+        }
+
+
+        /// <summary>
+        /// Get maximum available EC from batteries
+        /// </summary>
+        /// <returns></returns>
+        private double GetAvailableEC_Batteries()
+        {
+            double maxEC = 0;
+
+            for (int i = 0; i < vessel.parts.Count; ++i)
+            {
+                var part = vessel.parts[i];
+                if (part.Resources.Contains("ElectricCharge") && part.Resources["ElectricCharge"].flowState)
+                    maxEC += part.Resources["ElectricCharge"].maxAmount;
+            }
+
+            return maxEC;
         }
 
         #endregion
@@ -598,10 +728,27 @@ namespace BonVoyage
                 return false;
             }
 
+            // Get fuel amount if fuel cells are used
+            if (fuelCells.Use)
+            {
+                IResourceBroker broker = new ResourceBroker();
+                var iList = fuelCells.InputResources;
+                for (int i = 0; i < iList.Count; i++)
+                {
+                    iList[i].MaximumAmountAvailable = broker.AmountAvailable(vessel.rootPart, iList[i].Name, 1, ResourceFlowMode.ALL_VESSEL);
+
+                    if (iList[i].MaximumAmountAvailable == 0)
+                    {
+                        ScreenMessages.PostScreenMessage(Localizer.Format("#LOC_BV_Warning_NotEnoughFuel"), 5f).color = Color.yellow;
+                        return false;
+                    }
+                }
+            }
+
             // Power production
             if (requiredPower > (electricPower_Solar + electricPower_Other))
             {
-                // If required power is greater then total power generated, then average speed can be lowered up to 75%
+                // If required power is greater than total power generated, then average speed can be lowered up to 75%
                 double speedReduction = (requiredPower - (electricPower_Solar + electricPower_Other)) / requiredPower;
 
                 if (speedReduction > 0.75)
@@ -614,7 +761,6 @@ namespace BonVoyage
             BonVoyageModule module = vessel.FindPartModuleImplementing<BonVoyageModule>();
             if (module != null)
             {
-                //vesselHeightFromTerrain = vessel.heightFromTerrain + wheelTestResult.maxWheelRadius;
                 vesselHeightFromTerrain = vessel.radarAltitude;
 
                 module.averageSpeed = averageSpeed;
@@ -656,7 +802,7 @@ namespace BonVoyage
             if (!active || vessel.loaded)
                 return;
 
-            // If we don't know last time of update, then set it and wait for the next update cycle
+            // If we don't know the last time of update, then set it and wait for the next update cycle
             if (lastTimeUpdated == 0)
             {
                 State = VesselState.Idle;
@@ -664,11 +810,10 @@ namespace BonVoyage
                 BVModule.SetValue("lastTimeUpdated", currentTime.ToString());
                 return;
             }
-
-            //// Revision - Kopernicus
+            
             Vector3d roverPos = vessel.mainBody.position - vessel.GetWorldPos3D();
             Vector3d toMainStar = vessel.mainBody.position - FlightGlobals.Bodies[mainStarIndex].position;
-            angle = Vector3d.Angle(roverPos, toMainStar); // Angle between rover and main star
+            angle = Vector3d.Angle(roverPos, toMainStar); // Angle between rover and the main star
 
             // Speed penalties at twighlight and at night
             if ((angle > 90) && manned) // night
@@ -680,8 +825,42 @@ namespace BonVoyage
             else // day
                 speedMultiplier = 1.0;
 
+            double deltaT = currentTime - lastTimeUpdated; // Time delta from the last update
+            double deltaTOver = 0; // deltaT which is calculated from a value over the maximum resource amout available
+
+            // Compute increase or decrease in EC from the last update
+            if (batteries.UseBatteries)
+            {
+                // Process fuel cells before batteries
+                if (fuelCells.Use 
+                    && ((angle > 90) 
+                        || (batteries.ECPerSecondGenerated - fuelCells.OutputValue <= 0)
+                        || (batteries.CurrentEC < batteries.MaxUsedEC))) // Night, not enough solar power or we need to recharge batteries
+                {
+                    var iList = fuelCells.InputResources;
+                    for (int i = 0; i < iList.Count; i++)
+                    {
+                        iList[i].CurrentAmountUsed += iList[i].Ratio * deltaT;
+                        if (iList[i].CurrentAmountUsed > iList[i].MaximumAmountAvailable)
+                            deltaTOver = Math.Max(deltaTOver, (iList[i].CurrentAmountUsed - iList[i].MaximumAmountAvailable) / iList[i].Ratio);
+                    }
+                    if (deltaTOver > 0)
+                    {
+                        deltaT -= deltaTOver;
+                        // Reduce the amount of used resources
+                        for (int i = 0; i < iList.Count; i++)
+                            iList[i].CurrentAmountUsed -= iList[i].Ratio * deltaTOver;
+                    }
+                }
+
+                if (angle <= 90) // day
+                    batteries.CurrentEC = Math.Min(batteries.CurrentEC + batteries.ECPerSecondGenerated * deltaT, batteries.MaxUsedEC);
+                else // night
+                    batteries.CurrentEC = Math.Max(batteries.CurrentEC - batteries.ECPerSecondConsumed * deltaT, 0);
+            }
+
             // No moving at night, if there isn't enough power
-            if ((angle > 90) && (averageSpeedAtNight == 0.0))
+            if ((angle > 90) && (averageSpeedAtNight == 0.0) && !(batteries.UseBatteries && (batteries.CurrentEC > 0)))
             {
                 State = VesselState.AwaitingSunlight;
                 lastTimeUpdated = currentTime;
@@ -689,8 +868,7 @@ namespace BonVoyage
                 return;
             }
 
-            double deltaT = currentTime - lastTimeUpdated;
-            double deltaS = AverageSpeed * deltaT;
+            double deltaS = AverageSpeed * deltaT; // Distance delta from the last update
             distanceTravelled += deltaS;
 
             if (distanceTravelled >= distanceToTarget) // We reached the target
@@ -724,45 +902,72 @@ namespace BonVoyage
             }
             else
             {
-                int step = Convert.ToInt32(Math.Floor(distanceTravelled / PathFinder.StepSize)); // In which step of the path we are
-                double remainder = distanceTravelled % PathFinder.StepSize; // Current remaining distance from the current step
-                double bearing = 0;
-
-                if (step < path.Count - 1)
-                    bearing = GeoUtils.InitialBearing( // Bearing to the next step from previous step
-                        path[step].latitude,
-                        path[step].longitude,
-                        path[step + 1].latitude,
-                        path[step + 1].longitude
-                    );
-                else
-                    bearing = GeoUtils.InitialBearing( // Bearing to the target from previous step
-                        path[step].latitude,
-                        path[step].longitude,
-                        targetLatitude,
-                        targetLongitude
-                    );
-
-                // Compute new coordinates, we are moving from the current step, length f distance is "remainder"
-                double[] newCoordinates = GeoUtils.GetLatitudeLongitude(
-                    path[step].latitude,
-                    path[step].longitude,
-                    bearing,
-                    remainder,
-                    vessel.mainBody.Radius
-                );
-
-                // Move
-                if (!MoveSafely(newCoordinates[0], newCoordinates[1]))
+                try // There is sometimes null ref exception during scene change
                 {
-                    distanceTravelled -= deltaS;
-                    State = VesselState.Idle;
+                    int step = Convert.ToInt32(Math.Floor(distanceTravelled / PathFinder.StepSize)); // In which step of the path we are
+                    double remainder = distanceTravelled % PathFinder.StepSize; // Current remaining distance from the current step
+                    double bearing = 0;
+
+                    if (step < path.Count - 1)
+                        bearing = GeoUtils.InitialBearing( // Bearing to the next step from previous step
+                            path[step].latitude,
+                            path[step].longitude,
+                            path[step + 1].latitude,
+                            path[step + 1].longitude
+                        );
+                    else
+                        bearing = GeoUtils.InitialBearing( // Bearing to the target from previous step
+                            path[step].latitude,
+                            path[step].longitude,
+                            targetLatitude,
+                            targetLongitude
+                        );
+
+                    // Compute new coordinates, we are moving from the current step, distance is "remainder"
+                    double[] newCoordinates = GeoUtils.GetLatitudeLongitude(
+                        path[step].latitude,
+                        path[step].longitude,
+                        bearing,
+                        remainder,
+                        vessel.mainBody.Radius
+                    );
+
+                    // Move
+                    if (!MoveSafely(newCoordinates[0], newCoordinates[1]))
+                    {
+                        distanceTravelled -= deltaS;
+                        State = VesselState.Idle;
+                    }
+                    else
+                        State = VesselState.Moving;
                 }
-                else
-                    State = VesselState.Moving;
+                catch { }
             }
 
             Save(currentTime);
+
+            // Stop the rover, we don't have enough of fuel
+            if (deltaTOver > 0)
+            {
+                active = false;
+                arrived = true;
+                BVModule.SetValue("active", "False");
+                BVModule.SetValue("arrived", "True");
+                BVModule.SetValue("pathEncoded", "");
+
+                // Dewarp
+                if (Configuration.AutomaticDewarp)
+                {
+                    if (TimeWarp.CurrentRate > 3) // Instant drop to 50x warp
+                        TimeWarp.SetRate(3, true);
+                    if (TimeWarp.CurrentRate > 0) // Gradual drop out of warp
+                        TimeWarp.SetRate(0, false);
+                    ScreenMessages.PostScreenMessage(vessel.vesselName + " " + Localizer.Format("#LOC_BV_Warning_Stopped") + ". " + Localizer.Format("#LOC_BV_Warning_NotEnoughFuel"), 5f).color = Color.red;
+                }
+
+                NotifyNotEnoughFuel();
+                State = VesselState.Idle;
+            }
         }
 
 
@@ -798,13 +1003,72 @@ namespace BonVoyage
         private void NotifyArrival()
         {
             MessageSystem.Message message = new MessageSystem.Message(
-                "Rover arrived", // title
+                Localizer.Format("#LOC_BV_Title_RoverArrived"), // title
                 "<color=#74B4E2>" + vessel.vesselName + "</color> " + Localizer.Format("#LOC_BV_VesselArrived") + " " + vessel.mainBody.bodyDisplayName.Replace("^N", "") + ".\n<color=#AED6EE>"
                 + Localizer.Format("#LOC_BV_Control_Lat") + ": " + targetLatitude.ToString("F2") + "</color>\n<color=#AED6EE>" + Localizer.Format("#LOC_BV_Control_Lon") + ": " + targetLongitude.ToString("F2") + "</color>", // message
                 MessageSystemButton.MessageButtonColor.GREEN,
                 MessageSystemButton.ButtonIcons.COMPLETE
             );
             MessageSystem.Instance.AddMessage(message);
+        }
+
+
+        /// <summary>
+        /// Notify, that rover has not enough fuel
+        /// </summary>
+        private void NotifyNotEnoughFuel()
+        {
+            MessageSystem.Message message = new MessageSystem.Message(
+                Localizer.Format("#LOC_BV_Title_RoverStopped"), // title
+                "<color=#74B4E2>" + vessel.vesselName + "</color> " + Localizer.Format("#LOC_BV_Warning_Stopped") + ". " + Localizer.Format("#LOC_BV_Warning_NotEnoughFuel") + ".\n<color=#AED6EE>", // message
+                MessageSystemButton.MessageButtonColor.RED,
+                MessageSystemButton.ButtonIcons.ALERT
+            );
+            MessageSystem.Instance.AddMessage(message);
+        }
+
+
+        /// <summary>
+        /// Return status of batteries usage
+        /// </summary>
+        /// <returns></returns>
+        internal bool GetUseBatteries()
+        {
+            return batteries.UseBatteries;
+        }
+
+
+        /// <summary>
+        /// Set batteries usage
+        /// </summary>
+        /// <param name="value"></param>
+        internal void UseBatteriesChanged(bool value)
+        {
+            batteries.UseBatteries = value;
+            if (!value)
+                fuelCells.Use = false;
+        }
+
+
+        /// <summary>
+        /// Return status of fuel cells usage
+        /// </summary>
+        /// <returns></returns>
+        internal bool GetUseFuelCells()
+        {
+            return fuelCells.Use;
+        }
+
+
+        /// <summary>
+        /// Set fuel cells usage
+        /// </summary>
+        /// <param name="value"></param>
+        internal void UseFuelCellsChanged(bool value)
+        {
+            fuelCells.Use = value;
+            if (value)
+                batteries.UseBatteries = true;
         }
 
     }

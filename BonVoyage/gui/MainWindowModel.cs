@@ -341,6 +341,16 @@ namespace BonVoyage
             }
         }
 
+
+        /// <summary>
+        /// Reload vessels and refresh list
+        /// </summary>
+        internal void ReloadVesselList()
+        {
+            BonVoyage.Instance.LoadControllers();
+            RefreshVesselListLayout();
+        }
+
     }
 
 }

@@ -56,6 +56,20 @@ namespace BonVoyage
 
 
         /// <summary>
+        /// Automatic dewarp
+        /// </summary>
+        internal static bool DisableRotation
+        {
+            get { return configuration.GetValue<bool>("disableRotation", false); }
+            set
+            {
+                configuration.SetValue("disableRotation", value);
+                configuration.save();
+            }
+        }
+
+
+        /// <summary>
         /// Use KSP toolbar
         /// </summary>
         internal static bool KSPToolbar

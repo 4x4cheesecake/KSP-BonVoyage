@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace BonVoyage
@@ -10,14 +11,14 @@ namespace BonVoyage
     internal static class StabilizeVessel
     {
         // How many ticks do we hold the vessel
-        private static int stabilizationTicks = 100;
+        private static int stabilizationTicks = 50;
 
         // If downmovement is below this value, leave the vessel as is
         private static float minDownMovement = 0.05f;
         // Minimum upmovement in case we're beneath the ground
         private static float upMovementStep = 0.2f;
         // Max upmovement in case upward movement is required; should cancel moving the craft to space in case we messed the things up
-        private static float maxUpMovement = 2.0f;
+        private static float maxUpMovement = 4.0f;
         // Last resort drop altitude
         // If the mod can't reliably determine the height above obstacles, like when vessel lies on different colliders, it still will be lowered, but to this altitude
         private static float lastResortAltitude = 2.0f;
@@ -26,6 +27,8 @@ namespace BonVoyage
         private const int rayCastExtendedMask = rayCastMask | 1;
 
         private static Vessel vesselToStabilize = null;
+        private static Vector3d rotationVector = Vector3d.back;
+        private static bool disableRotation = false;
         private static int vesselTimer = stabilizationTicks;
         private static bool moveVesselUp = false;
         private static VesselBounds bounds;
@@ -36,11 +39,14 @@ namespace BonVoyage
         /// This vessel will be stabilized
         /// </summary>
         /// <param name="v"></param>
-        internal static void AddVesselToStabilize(Vessel v)
+        internal static void AddVesselToStabilize(Vessel v, Vector3d rotation, bool rotationDisabled = false)
         {
             vesselToStabilize = v;
             if (vesselToStabilize == null)
                 return;
+
+            rotationVector = rotation;
+            disableRotation = rotationDisabled;
 
             vesselTimer = stabilizationTicks;
             moveVesselUp = true;
@@ -74,13 +80,32 @@ namespace BonVoyage
 
 
         /// <summary>
+        /// Rotate vessel if there is some
+        /// </summary>
+        private static void Rotate(Vessel v)
+        {
+            v.ResetCollisionIgnores();
+
+            //var from = Vector3d.back; // [0,0,-1]
+            var from = rotationVector;
+            var to = GeoUtils.GetTerrainNormal(v.latitude, v.longitude, v.altitude, v.mainBody);
+
+            Quaternion rotation = Quaternion.FromToRotation(from, to);
+
+            v.SetRotation(rotation);
+        }
+
+
+        /// <summary>
         /// Stabilization function
         /// </summary>
         private static void Stabilize(Vessel v)
         {
-            // First, we move burrowed vessel up and then down if it's too high
+            // First, we rotate, then move burrowed vessel up and then down if it's too high
             if (moveVesselUp)
             {
+                if (!disableRotation)
+                    Rotate(v);
                 MoveUp(v);
                 moveVesselUp = false;
             }

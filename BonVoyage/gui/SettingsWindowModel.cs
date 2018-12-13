@@ -8,6 +8,7 @@ namespace BonVoyage
     internal class SettingsWindowModel
     {
         private bool dewarpChecked = false;
+        private bool disableRotation = false;
         private bool kspSkin = true;
         private bool kspToolbarChecked = true;
         private bool toolbarContinuedChecked = false;
@@ -47,6 +48,27 @@ namespace BonVoyage
         internal bool GetDewarpToggleState()
         {
             return dewarpChecked;
+        }
+
+
+        /// <summary>
+        /// Disable rotation checkbox
+        /// </summary>
+        /// <param name="value"></param>
+        internal void DisableRotationChecked(bool value)
+        {
+            disableRotation = value;
+            Configuration.DisableRotation = value;
+        }
+
+
+        /// <summary>
+        /// Get the state of disable rotation toggle
+        /// </summary>
+        /// <returns></returns>
+        internal bool GeDisableRotationToggleState()
+        {
+            return disableRotation;
         }
 
 

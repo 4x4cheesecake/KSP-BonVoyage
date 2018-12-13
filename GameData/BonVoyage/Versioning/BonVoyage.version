@@ -1,6 +1,6 @@
 {
     "NAME"     : "Bon Voyage",
-    "URL"      : "https://raw.githubusercontent.com/jarosm/KSP-BonVoyage/master/GameData/BonVoyage/BonVoyage.version",
+    "URL"      : "https://raw.githubusercontent.com/jarosm/KSP-BonVoyage/master/GameData/BonVoyage/Versioning/BonVoyage.version",
     "DOWNLOAD" : "https://spacedock.info/mod/950/BonVoyage",
     "GITHUB" :
     {
@@ -11,8 +11,8 @@
     {
         "MAJOR" : 0,
         "MINOR" : 14,
-        "PATCH" : 0,
-        "BUILD" : 1
+        "PATCH" : 3,
+        "BUILD" : 0
     },
     "KSP_VERSION" :
     {

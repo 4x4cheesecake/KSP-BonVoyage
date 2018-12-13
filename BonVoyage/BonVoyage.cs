@@ -16,7 +16,7 @@ namespace BonVoyage
     {
         #region Public properties
 
-        public static BonVoyage Instance; // Mod's instance
+        public static BonVoyage Instance { get; private set; } // Mod's instance
         public const string Name = "BonVoyage"; // Name of the mod
 
         internal MainWindowModel MainModel; // Main view's model
@@ -125,8 +125,9 @@ namespace BonVoyage
             GameEvents.onGameUnpause.Add(OnGameUnpause);
 
             LoadControllers();
+            AddScenario();
 
-            // After BonVoyage was runned for the first time, set FirstRun to false, because we don't need to reset path and target lat/lon
+            // After BonVoyage was run for the first time, set FirstRun to false, because we don't need to reset path and target lat/lon
             Configuration.FirstRun = false;
 
             InputLockManager.RemoveControlLock("BonVoyageInputLock");
@@ -268,6 +269,7 @@ namespace BonVoyage
             if ((scene == GameScenes.FLIGHT) || (scene == GameScenes.SPACECENTER) || (scene == GameScenes.TRACKSTATION))
             {
                 LoadControllers();
+                BonVoyageScenario.Instance.LoadScenario();
             }
 
             GamePaused = false;
@@ -297,17 +299,23 @@ namespace BonVoyage
                         break;
                     }
                 }
-
-                // Move only a rover
-                if ((controller != null) && (controller is RoverController))
+                
+                if (controller != null)
                 {
-                    // Only rovers with active controller or rovers that just arrived at the destination
-                    if (controller.Active || controller.Arrived)
+                    // Move only a rover
+                    if (controller is RoverController)
                     {
-                        // Stabilize only if another stabilizer is not present
-                        if (!otherStabilizerPresent)
-                            StabilizeVessel.AddVesselToStabilize(vessel);
+                        // Only rovers with active controller or rovers that just arrived at the destination
+                        if (controller.Active || controller.Arrived)
+                        {
+                            // Stabilize only if another stabilizer is not present
+                            if (!otherStabilizerPresent)
+                                StabilizeVessel.AddVesselToStabilize(vessel, controller.RotationVector, Configuration.DisableRotation);
+                        }
                     }
+
+                    // Deduct resources
+                    controller.ProcessResources();
                 }
             }
         }
@@ -561,12 +569,14 @@ namespace BonVoyage
 
             if (controlViewVisible)
             {
-                // Check if we are in flight and active vessel has BV controller and is not shutted down
+                // Check if we are in flight, active vessel has full controll and BV controller and is not shutted down
                 bool active = false;
                 if (HighLogic.LoadedSceneIsFlight)
                 {
                     Vessel vessel = FlightGlobals.ActiveVessel;
-                    active = CheckActiveControllerOfVessel(FlightGlobals.ActiveVessel);
+                    BVController controller = GetControllerOfVessel(FlightGlobals.ActiveVessel);
+                    if (controller != null)
+                        active = (!controller.Shutdown && controller.CheckConnection());
                 }
 
                 if (active && (ControlView == null))
@@ -656,7 +666,8 @@ namespace BonVoyage
         /// </summary>
         public void FixedUpdate()
         {
-            StabilizeVessel.Stabilize();
+            if (!otherStabilizerPresent)
+                StabilizeVessel.Stabilize();
         }
 
 
@@ -704,7 +715,7 @@ namespace BonVoyage
         /// <summary>
         /// Load BV controllers from the config
         /// </summary>
-        private void LoadControllers()
+        internal void LoadControllers()
         {
             Vessel vessel = null;
             ProtoPartSnapshot part = null;
@@ -803,6 +814,41 @@ namespace BonVoyage
             }
             else
                 InputLockManager.RemoveControlLock("BonVoyageInputLock");
+        }
+
+
+        /// <summary>
+        /// Add BonVoyage scenario to scenes (flight, space center, tracking station)
+        /// </summary>
+        private void AddScenario()
+        {
+            var game = HighLogic.CurrentGame;
+            var psm = game.scenarios.Find(s => s.moduleName == typeof(BonVoyageScenario).Name);
+            if (psm == null) // Our scenario doesn't exist => add it to all relevant scenes
+            {
+                game.AddProtoScenarioModule(typeof(BonVoyageScenario), GameScenes.FLIGHT, GameScenes.SPACECENTER, GameScenes.TRACKSTATION);
+            }
+            else // Check which scene don't have scenario and add it
+            {
+                bool flight = false, space = false, track = false;
+                int count = psm.targetScenes.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    var s = psm.targetScenes[i];
+                    if (s == GameScenes.FLIGHT)
+                        flight = true;
+                    if (s == GameScenes.SPACECENTER)
+                        space = true;
+                    if (s == GameScenes.TRACKSTATION)
+                        track = true;
+                }
+                if (!flight)
+                    psm.targetScenes.Add(GameScenes.FLIGHT);
+                if (!space)
+                    psm.targetScenes.Add(GameScenes.SPACECENTER);
+                if (!track)
+                    psm.targetScenes.Add(GameScenes.TRACKSTATION);
+            }
         }
 
     }

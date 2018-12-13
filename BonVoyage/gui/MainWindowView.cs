@@ -161,6 +161,15 @@ namespace BonVoyage
                     Localizer.Format("#LOC_BV_Settings"),
                     ShowSettings
                 );
+
+                CommonWindowProperties.AddFloatingButton(
+                    dialog.transform,
+                    -CommonWindowProperties.mainElementPadding.right - 5 * CommonWindowProperties.mainWindowSpacing - 2 * CommonWindowProperties.buttonIconWidth, -CommonWindowProperties.mainElementPadding.top,
+                    CommonWindowProperties.ActiveSkin.button,
+                    "R",
+                    Localizer.Format("#LOC_BV_Reload"),
+                    model.ReloadVesselList
+                );
             }
 
             return dialog;

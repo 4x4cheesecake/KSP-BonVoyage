@@ -1,5 +1,6 @@
 ﻿using System;
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace BonVoyage
 {
@@ -145,10 +146,21 @@ namespace BonVoyage
         internal static CelestialBody GetMainStar(Vessel v)
         {
             CelestialBody body = v.mainBody;
-            while (body.referenceBody != body) // Last body has reference to itself???
+            if (!AssemblyIsLoaded("Kopernicus"))
             {
-                // We are preparing for Kopernicus
-                body = body.referenceBody;
+                while (body.referenceBody != body) // Last body has reference to itself???
+                    body = body.referenceBody;
+            }
+            else // If Kopernicus is present, find the name of a current star
+            {
+                bool found = false;
+                string currentStarName = KopernicusWrapper.GetCurrentStarName();
+                while ((body.referenceBody != body) && !found)
+                {
+                    body = body.referenceBody;
+                    if (body.name == currentStarName)
+                        found = true;
+                }
             }
             return body;
         }
@@ -172,6 +184,24 @@ namespace BonVoyage
             }
 
             return result;
+        }
+
+
+        /// <summary>
+        /// Get index of specific assembly
+        /// </summary>
+        /// <param name="assemblyName"></param>
+        /// <returns></returns>
+        internal static int GetAssemblyIndex(string assemblyName)
+        {
+            int i = 0;
+            while (i < AssemblyLoader.loadedAssemblies.Count)
+            {
+                if (AssemblyLoader.loadedAssemblies[i].name == assemblyName)
+                    return i;
+                i++;
+            }
+            return -1;
         }
 
     }
